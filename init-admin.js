@@ -1,32 +1,21 @@
 require('dotenv').config({ path: './config/.env' });
-const mysql = require('mysql2');
+const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const readline = require('readline');
+const path = require('path');
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
 
-// Create connection
-const db = mysql.createConnection({
-    host: process.env.DB_HOST || "localhost",
-    user: process.env.DB_USER || "root",
-    password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "parlourDB",
-    port: process.env.DB_PORT || 3306
-});
+// Create SQLite database connection
+const dbPath = path.join(__dirname, 'database.db');
+const db = new sqlite3.Database(dbPath);
 
 async function createAdmin() {
     try {
-        await new Promise((resolve, reject) => {
-            db.connect(err => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
-
-        console.log("Connected to MySQL");
+        console.log("Connected to SQLite database:", dbPath);
 
         // Get admin credentials from user
         const username = await new Promise(resolve => {
@@ -48,17 +37,17 @@ async function createAdmin() {
         // Check if admin already exists
         const checkQuery = 'SELECT * FROM admin_users WHERE username = ?';
         const existing = await new Promise((resolve, reject) => {
-            db.query(checkQuery, [username], (err, results) => {
+            db.get(checkQuery, [username], (err, row) => {
                 if (err) reject(err);
-                else resolve(results);
+                else resolve(row);
             });
         });
 
-        if (existing.length > 0) {
+        if (existing) {
             // Update existing admin
             const updateQuery = 'UPDATE admin_users SET password_hash = ? WHERE username = ?';
             await new Promise((resolve, reject) => {
-                db.query(updateQuery, [password_hash, username], (err) => {
+                db.run(updateQuery, [password_hash, username], function(err) {
                     if (err) reject(err);
                     else resolve();
                 });
@@ -68,7 +57,7 @@ async function createAdmin() {
             // Create new admin
             const insertQuery = 'INSERT INTO admin_users (username, password_hash) VALUES (?, ?)';
             await new Promise((resolve, reject) => {
-                db.query(insertQuery, [username, password_hash], (err) => {
+                db.run(insertQuery, [username, password_hash], function(err) {
                     if (err) reject(err);
                     else resolve();
                 });
@@ -81,7 +70,7 @@ async function createAdmin() {
     } catch (error) {
         console.error('Error:', error.message);
     } finally {
-        db.end();
+        db.close();
         rl.close();
     }
 }
